@@ -276,10 +276,10 @@ impl NetworkManager {
         if let Some(ua) = user_agent {
             headers.insert(USER_AGENT, HeaderValue::from_str(ua.as_str())?);
         } else {
-            headers.insert(
-                USER_AGENT,
-                HeaderValue::from_str(&format!("clash-verge/v{}", env!("CARGO_PKG_VERSION")))?,
-            );
+            // Default to the provider's "clash-ninja" UA prefix. The subscription
+            // server gates on the UA prefix; this fork targets that provider, so
+            // subscriptions work without per-profile UA configuration.
+            headers.insert(USER_AGENT, HeaderValue::from_str("clash-ninja")?);
         }
 
         self.build_client(proxy_url, headers, accept_invalid_certs, timeout_secs, tls_root_mode)

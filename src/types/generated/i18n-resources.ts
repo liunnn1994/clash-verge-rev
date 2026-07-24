@@ -790,8 +790,8 @@ export interface TranslationResources {
         }
         clashCore: {
           variants: {
-            alpha: string
-            release: string
+            ninja: string
+            stock: string
           }
         }
         clashPort: {

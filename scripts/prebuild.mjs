@@ -289,29 +289,44 @@ if (!META_ALPHA_MAP[`${platform}-${arch}`]) {
 // =======================
 // Build meta objects
 // =======================
-function clashMetaAlpha() {
-  const name = META_ALPHA_MAP[`${platform}-${arch}`]
-  const isWin = platform === 'win32'
-  const urlExt = isWin ? 'zip' : 'gz'
-  return {
-    name: 'verge-mihomo-alpha',
-    targetFile: `verge-mihomo-alpha-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
-    exeFile: `${name}${isWin ? '.exe' : ''}`,
-    zipFile: `${name}-${META_ALPHA_VERSION}.${urlExt}`,
-    downloadURL: `${META_ALPHA_URL_PREFIX}/${name}-${META_ALPHA_VERSION}.${urlExt}`,
-  }
-}
-
-function clashMeta() {
+function clashMetaStock() {
   const name = META_MAP[`${platform}-${arch}`]
   const isWin = platform === 'win32'
   const urlExt = isWin ? 'zip' : 'gz'
   return {
-    name: 'verge-mihomo',
-    targetFile: `verge-mihomo-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
+    name: 'verge-mihomo-stock',
+    targetFile: `verge-mihomo-stock-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
     exeFile: `${name}${isWin ? '.exe' : ''}`,
     zipFile: `${name}-${META_VERSION}.${urlExt}`,
     downloadURL: `${META_URL_PREFIX}/${META_VERSION}/${name}-${META_VERSION}.${urlExt}`,
+  }
+}
+
+// Provider ninja kernel (kachetong1314/mihomo-ninja) — a raw binary that decodes
+// the obfuscated ninja subscription itself (incl. the `#!PASS-INFO` segment), so
+// no client-side decode is needed. verge-mihomo = this kernel.
+const NINJA_URL_PREFIX =
+  'https://github.com/kachetong1314/mihomo-ninja/releases/latest/download'
+const NINJA_MAP = {
+  'win32-x64': 'ninja-windows-amd64.exe',
+  'win32-ia32': 'ninja-windows-386.exe',
+  'win32-arm64': 'ninja-windows-arm64.exe',
+  'darwin-x64': 'ninja-darwin-amd64',
+  'darwin-arm64': 'ninja-darwin-arm64',
+  'linux-x64': 'ninja-linux-amd64',
+  'linux-arm64': 'ninja-linux-arm64',
+}
+function clashMeta() {
+  const asset = NINJA_MAP[`${platform}-${arch}`]
+  if (!asset)
+    throw new Error(`ninja kernel: no asset mapped for ${platform}-${arch}`)
+  const isWin = platform === 'win32'
+  return {
+    name: 'verge-mihomo',
+    targetFile: `verge-mihomo-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
+    exeFile: asset,
+    zipFile: `${asset}.bin`, // raw-binary marker (handled below, no archive)
+    downloadURL: `${NINJA_URL_PREFIX}/${asset}`,
   }
 }
 
@@ -427,6 +442,11 @@ async function resolveSidecar(binInfo) {
       await fsp.rename(path.join(tempDir, extracted), sidecarPath)
       await fsp.chmod(sidecarPath, 0o755)
       log_success(`tgz processed: "${name}"`)
+    } else if (zipFile.endsWith('.bin')) {
+      // raw binary (no archive) — move it straight to the sidecar path
+      await fsp.rename(tempZip, sidecarPath)
+      if (platform !== 'win32') await fsp.chmod(sidecarPath, 0o755)
+      log_success(`raw binary placed: "${name}"`)
     } else {
       // .gz
       const readStream = fs.createReadStream(tempZip)
@@ -753,15 +773,14 @@ const resolveUnSetDnsScript = () =>
 // =======================
 const tasks = [
   {
-    name: 'verge-mihomo-alpha',
+    name: 'verge-mihomo-stock',
     func: () =>
-      getLatestAlphaVersion().then(() => resolveSidecar(clashMetaAlpha())),
+      getLatestReleaseVersion().then(() => resolveSidecar(clashMetaStock())),
     retry: 5,
   },
   {
     name: 'verge-mihomo',
-    func: () =>
-      getLatestReleaseVersion().then(() => resolveSidecar(clashMeta())),
+    func: () => resolveSidecar(clashMeta()),
     retry: 5,
   },
   { name: 'plugin', func: resolvePlugin, retry: 5, winOnly: true },

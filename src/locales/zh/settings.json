@@ -289,8 +289,8 @@
     },
     "clashCore": {
       "variants": {
-        "release": "正式版",
-        "alpha": "预览版"
+        "ninja": "供应商",
+        "stock": "开源"
       }
     },
     "liteMode": {

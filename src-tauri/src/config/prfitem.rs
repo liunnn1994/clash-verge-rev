@@ -385,8 +385,12 @@ impl PrfItem {
         let data = data.trim_start_matches('\u{feff}');
 
         // check the data whether the valid yaml format
-        let yaml = serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
+        let yaml =
+            serde_yaml_ng::from_str::<Mapping>(data).context("the remote profile data is invalid yaml")?;
 
+        // The ninja kernel (verge-mihomo sidecar) decodes obfuscated ninja
+        // proxies itself — including the `#!PASS-INFO` segment — so the profile
+        // is saved verbatim (no client-side rewrite). Validate only.
         if !yaml.contains_key("proxies") && !yaml.contains_key("proxy-providers") {
             bail!("profile does not contain `proxies` or `proxy-providers`");
         }

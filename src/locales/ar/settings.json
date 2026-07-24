@@ -289,8 +289,8 @@
     },
     "clashCore": {
       "variants": {
-        "release": "الإصدار المستقر",
-        "alpha": "الإصدار التجريبي"
+        "ninja": "Provider",
+        "stock": "Open Source"
       }
     },
     "liteMode": {

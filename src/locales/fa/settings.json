@@ -289,8 +289,8 @@
     },
     "clashCore": {
       "variants": {
-        "release": "نسخه نهایی",
-        "alpha": "نسخه آلفا"
+        "ninja": "Provider",
+        "stock": "Open Source"
       }
     },
     "liteMode": {

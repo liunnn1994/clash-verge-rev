@@ -1,0 +1,9 @@
+[tools]
+node = "24.18.0"
+
+[hooks]
+postinstall = "npx corepack enable"
+
+[settings]
+experimental = true
+node.mirror_url = "https://npmmirror.com/mirrors/node/"
