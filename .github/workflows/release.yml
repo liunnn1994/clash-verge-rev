@@ -261,14 +261,15 @@ jobs:
           # Ad-Hoc signing (codesign -s -): no Apple cert/notarization needed.
           # Avoids the "damaged" error; first open shows the Gatekeeper
           # "unidentified developer" prompt, then opens normally.
-          # NOTE: APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD are intentionally
-          # NOT set — an empty/missing secret still makes tauri-bundler attempt
-          # `security import` and fail the bundle ("failed to import keychain
-          # certificate"). Leave them out so ad-hoc signing below takes effect.
+          # NOTE: all Apple cert/notarization env vars (APPLE_CERTIFICATE,
+          # APPLE_CERTIFICATE_PASSWORD, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID)
+          # are intentionally NOT set. Defining them with an empty/missing secret
+          # still makes tauri-bundler attempt `security import` and notarization,
+          # failing the bundle ("failed to import keychain certificate" /
+          # "Team ID must be at least 3 characters"). Leave them ALL out so the
+          # ad-hoc identity below is used with NO notarization (an ad-hoc signed
+          # app can't be notarized anyway).
           APPLE_SIGNING_IDENTITY: '-'
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           releaseId: ${{ needs.prepare_release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
