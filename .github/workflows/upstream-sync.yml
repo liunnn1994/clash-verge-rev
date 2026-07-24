@@ -1,0 +1,123 @@
+name: Upstream Sync
+
+# Every night ~02:17 Beijing (UTC+8) check upstream clash-verge-rev for a new
+# stable release. If found, merge it, drop the upstream CI we don't want, tag,
+# and push (the tag triggers release.yml). On merge conflict, open a PR instead
+# and stop — a human resolves it by day.
+on:
+  schedule:
+    - cron: '17 18 * * *' # 18:17 UTC == 02:17 UTC+8
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Force a specific upstream tag (e.g. v2.5.3). Leave empty for latest stable.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  UPSTREAM_REPO: clash-verge-rev/clash-verge-rev
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve upstream tag
+        id: up
+        run: |
+          if [ -n "${{ inputs.upstream_tag }}" ]; then
+            TAG="${{ inputs.upstream_tag }}"
+          else
+            TAG=$(gh api "repos/${{ env.UPSTREAM_REPO }}/releases/latest" --jq .tag_name)
+          fi
+          [ -z "$TAG" ] && { echo "no upstream tag found"; exit 1; }
+          FORK_TAG=$(git tag -l 'v[0-9]*' | sort -V | tail -1)
+          echo "upstream=$TAG fork_latest=$FORK_TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [ "$TAG" = "$FORK_TAG" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Nothing to do
+        if: steps.up.outputs.skip == 'true'
+        run: echo "Already in sync with ${{ steps.up.outputs.tag }}."
+
+      - name: Merge upstream
+        if: steps.up.outputs.skip != 'true'
+        run: |
+          set +e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${{ env.UPSTREAM_REPO }}.git"
+          git fetch upstream --tags
+          TAG="${{ steps.up.outputs.tag }}"
+          git merge --no-edit "$TAG"
+          MERGE_RC=$?
+          echo "merge_rc=$MERGE_RC" >> "$GITHUB_ENV"
+          if [ $MERGE_RC -ne 0 ]; then
+            echo "MERGE_CONFLICT=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: On conflict — open a PR for a human
+        if: steps.up.outputs.skip != 'true' && env.MERGE_CONFLICT == 'true'
+        run: |
+          git merge --abort
+          TAG="${{ steps.up.outputs.tag }}"
+          BRANCH="sync/$TAG"
+          git checkout -B "$BRANCH" "upstream/$TAG"
+          git push -f origin "$BRANCH"
+          if gh pr create \
+            --base main --head "$BRANCH" \
+            --title "chore: sync upstream $TAG (merge conflicts — needs manual resolve)" \
+            --body "Upstream [$TAG](https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$TAG) does not merge cleanly into \`main\`.
+
+          Resolve the conflicts here, then merge. The next nightly run (or a manual re-run after merge) will tag and build the release." ; then
+            echo "PR created for $BRANCH"
+          else
+            echo "PR already exists for $BRANCH — nothing to do"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: On clean merge — drop upstream CI, commit, tag, push
+        if: steps.up.outputs.skip != 'true' && env.MERGE_CONFLICT != 'true'
+        run: |
+          TAG="${{ steps.up.outputs.tag }}"
+          # Remove upstream-only workflows that would fire on this fork
+          # (cron builders / cross-repo reusable refs / upstream notifications).
+          # release.yml is this fork's own (kept); dev/lint/etc are harmless.
+          for f in autobuild.yml autobuild-check-test.yml check-commit-needs-build.yml \
+                   clean-old-assets.yml telegram-notify.yml pr-ai-slop-review.yml \
+                   pr-ai-slop-review.lock.yml pr-ai-slop-review.md; do
+            git rm -f --ignore-unmatch ".github/workflows/$f"
+          done
+          git commit --no-edit --allow-empty -m "chore: sync upstream $TAG"
+          git tag "$TAG"
+          git push origin main
+          git push origin "$TAG"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Upstream Sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.up.outputs.skip }}" = "true" ]; then
+            echo "✅ Already in sync with \`${{ steps.up.outputs.tag }}\` — nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ env.MERGE_CONFLICT }}" = "true" ]; then
+            echo "⚠️ Upstream \`${{ steps.up.outputs.tag }}\` has conflicts — a PR was opened for manual resolve." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "🚀 Merged \`${{ steps.up.outputs.tag }}\`, tagged & pushed — release.yml will build." >> "$GITHUB_STEP_SUMMARY"
+          fi

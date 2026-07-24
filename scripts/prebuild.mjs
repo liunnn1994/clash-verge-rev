@@ -315,6 +315,7 @@ const NINJA_MAP = {
   'darwin-arm64': 'ninja-darwin-arm64',
   'linux-x64': 'ninja-linux-amd64',
   'linux-arm64': 'ninja-linux-arm64',
+  'linux-arm': 'ninja-linux-armv7',
 }
 function clashMeta() {
   const asset = NINJA_MAP[`${platform}-${arch}`]
@@ -768,10 +769,29 @@ const resolveUnSetDnsScript = () =>
     localPath: path.join(cwd, 'scripts/unset_dns.sh'),
   })
 
+// In CI (GITHUB_REPOSITORY set), point the in-app updater at THIS repo's
+// `updater` release so the fork self-updates from its own GitHub (not upstream).
+// No-op locally (dev builds keep the committed endpoints).
+async function rewriteUpdaterEndpoints() {
+  const repo = process.env.GITHUB_REPOSITORY
+  if (!repo) return
+  const confPath = path.join(cwd, 'src-tauri/tauri.conf.json')
+  const conf = JSON.parse(await fsp.readFile(confPath, 'utf-8'))
+  const raw = `https://github.com/${repo}/releases/download/updater/update.json`
+  conf.plugins.updater.endpoints = [
+    `https://gh-proxy.com/${raw}`,
+    `https://mirror.ghproxy.com/${raw}`,
+    raw,
+  ]
+  await fsp.writeFile(confPath, JSON.stringify(conf, null, 2) + '\n')
+  log_success(`updater endpoints -> ${repo}`)
+}
+
 // =======================
 // Tasks
 // =======================
 const tasks = [
+  { name: 'updater-endpoints', func: rewriteUpdaterEndpoints, retry: 1 },
   {
     name: 'verge-mihomo-stock',
     func: () =>
