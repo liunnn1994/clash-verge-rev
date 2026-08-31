@@ -1,15 +1,15 @@
 name: Release Build
 
 on:
-  # ! 为了避免重复发布版本，应当通过独特 git tag 触发。
-  # ! 不再使用 workflow_dispatch 触发。
-  # workflow_dispatch:
+  # 手动触发时复用上游最新正式版本及本仓库已有 release，不创建新版本。
+  workflow_dispatch:
   push:
     # -rc tag 时预览发布: release-update 系列 job 不执行(不更新 latest.json)
     tags:
       - 'v*.*.*'
 permissions: write-all
 env:
+  APP_UPSTREAM_REPO: clash-verge-rev/clash-verge-rev
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: short
   HUSKY: 0
@@ -19,18 +19,53 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  resolve_release:
+    name: Resolve Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
+    steps:
+      - name: Resolve release and kernel versions
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RELEASE_TAG=$(gh api "repos/$APP_UPSTREAM_REPO/releases/latest" --jq .tag_name)
+            SOURCE_REF="$RELEASE_TAG"
+
+            # A rebuild may only replace an existing release in this repository.
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --silent
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+            SOURCE_REF="${GITHUB_REF}"
+          fi
+
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Unexpected release tag: $RELEASE_TAG"
+            exit 1
+          fi
+
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+
   check_tag_version:
     name: Check Release Tag and package.json Version Consistency
     runs-on: ubuntu-latest
+    needs: [resolve_release]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
+          ref: ${{ needs.resolve_release.outputs.source_ref }}
           fetch-depth: 0
 
       - name: Check if tag is from main branch
         run: |
-          TAG_REF="${GITHUB_REF##*/}"
+          TAG_REF="${{ needs.resolve_release.outputs.release_tag }}"
           echo "Checking if tag $TAG_REF is from main branch..."
 
           TAG_COMMIT=$(git rev-list -n 1 $TAG_REF)
@@ -46,7 +81,7 @@ jobs:
 
       - name: Check tag and package.json version
         run: |
-          TAG_REF="${GITHUB_REF_NAME:-${GITHUB_REF##*/}}"
+          TAG_REF="${{ needs.resolve_release.outputs.release_tag }}"
           echo "Current tag: $TAG_REF"
 
           PKG_VERSION=$(jq -r .version package.json)
@@ -64,27 +99,43 @@ jobs:
           echo "✅ Tag and package.json version are consistent."
 
   prepare_release:
-    name: Prepare Draft Release
+    name: Prepare Release
     runs-on: ubuntu-latest
-    needs: [check_tag_version]
+    needs: [resolve_release, check_tag_version]
     outputs:
-      release_id: ${{ steps.prepare_release.outputs.id }}
+      release_id: ${{ steps.prepare_release.outputs.id || steps.existing_release.outputs.id }}
+      release_tag: ${{ needs.resolve_release.outputs.release_tag }}
+      source_ref: ${{ needs.resolve_release.outputs.source_ref }}
     steps:
+      - name: Resolve existing release
+        if: github.event_name == 'workflow_dispatch'
+        id: existing_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve_release.outputs.release_tag }}
+        run: |
+          RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .id)
+          echo "id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
       - name: Create or update draft release
+        if: github.event_name == 'push'
         id: prepare_release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ needs.resolve_release.outputs.release_tag }}
           target_commitish: ${{ github.sha }}
-          name: 'Clash Verge Rev ${{ github.ref_name }}'
+          name: 'Clash Verge Rev ${{ needs.resolve_release.outputs.release_tag }}'
           body: 'Draft release, will be updated later.'
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          prerelease: ${{ contains(needs.resolve_release.outputs.release_tag, '-rc') }}
 
   update_tag:
     name: Update tag
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ needs.prepare_release.outputs.release_tag }}
+      source_ref: ${{ needs.prepare_release.outputs.source_ref }}
     needs:
       [
         prepare_release,
@@ -95,6 +146,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare_release.outputs.source_ref }}
 
       - name: Fetch UPDATE logs
         id: fetch_update_logs
@@ -104,7 +157,7 @@ jobs:
       - name: Set Env
         run: |
           echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
-          TAG_REF="${GITHUB_REF##*/}"
+          TAG_REF="${{ needs.prepare_release.outputs.release_tag }}"
           echo "TAG_NAME=$TAG_REF" >> $GITHUB_ENV
           VERSION=$(echo "$TAG_REF" | sed 's/^v//')
           echo "VERSION=$VERSION" >> $GITHUB_ENV
@@ -150,7 +203,7 @@ jobs:
       - name: Publish Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PRERELEASE: ${{ contains(github.ref_name, '-rc') }}
+          PRERELEASE: ${{ contains(needs.prepare_release.outputs.release_tag, '-rc') }}
         run: |
           release_id="${{ needs.prepare_release.outputs.release_id }}"
 
@@ -198,6 +251,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare_release.outputs.source_ref }}
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -238,7 +293,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm run prebuild ${{ matrix.target }}
+          pnpm run prebuild ${{ matrix.target }} --force
 
       - name: Add Rust Target
         run: |
@@ -269,7 +324,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: '-'
         with:
           releaseId: ${{ needs.prepare_release.outputs.release_id }}
-          tagName: ${{ github.ref_name }}
+          tagName: ${{ needs.prepare_release.outputs.release_tag }}
           releaseBody: 'Draft release, will be updated later.'
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
@@ -312,6 +367,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare_release.outputs.source_ref }}
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -346,7 +403,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm run prebuild ${{ matrix.target }}
+          pnpm run prebuild ${{ matrix.target }} --force
 
       - name: 'Setup for linux'
         run: |-
@@ -426,7 +483,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${{ github.ref_name }}" \
+          gh release upload "${{ needs.prepare_release.outputs.release_tag }}" \
             target/${{ matrix.target }}/release/bundle/deb/*.deb \
             target/${{ matrix.target }}/release/bundle/rpm/*.rpm \
             --clobber
@@ -448,6 +505,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare_release.outputs.source_ref }}
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
@@ -482,7 +541,7 @@ jobs:
       - name: Pnpm install and check
         run: |
           pnpm i
-          pnpm run prebuild ${{ matrix.target }}
+          pnpm run prebuild ${{ matrix.target }} --force
 
       - name: Download WebView2 Runtime
         run: |
@@ -539,22 +598,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $files = Get-ChildItem "target\${{ matrix.target }}\release\bundle\nsis\*setup*" | Select-Object -ExpandProperty FullName
-          gh release upload "${{ github.ref_name }}" $files --clobber
+          gh release upload "${{ needs.prepare_release.outputs.release_tag }}" $files --clobber
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Portable Bundle
         run: pnpm portable-fixed-webview2 ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.prepare_release.outputs.release_tag }}
 
   release-update:
-    if: ${{ !contains(github.ref_name, '-rc') }}
+    if: ${{ !contains(needs.update_tag.outputs.release_tag, '-rc') }}
     name: Release Update
     runs-on: ubuntu-latest
     needs: [update_tag]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.update_tag.outputs.source_ref }}
 
       - name: Install Node
         uses: actions/setup-node@v6
@@ -575,12 +637,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release-update-for-fixed-webview2:
-    if: ${{ !contains(github.ref_name, '-rc') }}
+    if: ${{ !contains(needs.update_tag.outputs.release_tag, '-rc') }}
     runs-on: ubuntu-latest
     needs: [update_tag]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.update_tag.outputs.source_ref }}
 
       - name: Install Node
         uses: actions/setup-node@v6
@@ -599,4 +663,3 @@ jobs:
         run: pnpm updater-fixed-webview2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
