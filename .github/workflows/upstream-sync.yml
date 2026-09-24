@@ -91,12 +91,15 @@ jobs:
           git reset --soft origin/main
           git commit -m "chore: sync upstream $TAG (merge conflicts — needs manual resolve)"
           git push -f origin "$BRANCH"
-          if gh pr create \
-            --base main --head "$BRANCH" \
-            --title "chore: sync upstream $TAG (merge conflicts — needs manual resolve)" \
-            --body "Upstream [$TAG](https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$TAG) does not merge cleanly into \`main\`.
+          # gh pr create (GraphQL createPullRequest) is denied for GITHUB_TOKEN
+          # ("Resource not accessible by integration") even with
+          # pull-requests: write — the REST endpoint works.
+          if gh api --method POST "repos/${{ github.repository }}/pulls" \
+            -f title="chore: sync upstream $TAG (merge conflicts — needs manual resolve)" \
+            -f head="$BRANCH" -f base=main \
+            -f body="Upstream [$TAG](https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$TAG) does not merge cleanly into \`main\`.
 
-          Resolve the conflicts here, then merge. The next nightly run (or a manual re-run after merge) will tag and build the release." ; then
+          Resolve the conflicts here, then merge. The next nightly run (or a manual re-run after merge) will tag and build the release." > /dev/null ; then
             echo "PR created for $BRANCH"
           else
             echo "PR already exists for $BRANCH — nothing to do"
