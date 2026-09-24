@@ -2,7 +2,13 @@ name: Release Build
 
 on:
   # 手动触发时复用上游最新正式版本及本仓库已有 release，不创建新版本。
+  # 也可传 tag 直接构建某个已推送的 tag（upstream-sync 打 tag 后用它触发）。
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Build this existing tag (e.g. v2.5.5). Empty = rebuild latest upstream stable.'
+        required: false
+        default: ''
   push:
     # -rc tag 时预览发布: release-update 系列 job 不执行(不更新 latest.json)
     tags:
@@ -32,7 +38,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
+            RELEASE_TAG="${{ inputs.tag }}"
+            SOURCE_REF="$RELEASE_TAG"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             RELEASE_TAG=$(gh api "repos/$APP_UPSTREAM_REPO/releases/latest" --jq .tag_name)
             SOURCE_REF="$RELEASE_TAG"
 

@@ -17,6 +17,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 env:
   UPSTREAM_REPO: clash-verge-rev/clash-verge-rev
@@ -126,6 +127,12 @@ jobs:
           git tag -f "$TAG"
           git push origin main
           git push origin "$TAG"
+          # GITHUB_TOKEN pushes don't trigger other workflows — dispatch the
+          # release build explicitly (workflow_dispatch is the one event
+          # GITHUB_TOKEN may trigger).
+          gh workflow run release.yml -f tag="$TAG"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         if: always()
