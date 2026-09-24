@@ -56,6 +56,11 @@ release; do not repeat that.
    macOS notarization (ad-hoc codesign instead) are removed; other
    upstream workflows (autobuild, updater, lint, dev, …) are deleted.
    `scripts/telegram.mjs` and its `axios` dependency are gone.
+   **Never rebuild an already-published tag**: installed apps fetch
+   `update.json` through caching mirrors (gh-proxy.com et al.), so a
+   rebuilt tag with re-signed assets yields "signature verification
+   failed" on every in-app update until the mirrors expire their cache.
+   Re-releases must use a fresh tag (e.g. `v2.5.5-1` or `v2.5.6`).
 5. **No provider advertising.** Upstream READMEs and the release body
    template promote an affiliated VPN; those blocks are removed and must
    not come back with upstream merges.
