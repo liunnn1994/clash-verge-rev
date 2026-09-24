@@ -234,7 +234,7 @@ pub struct IVergeTheme {
 }
 
 impl IVerge {
-    pub const VALID_CLASH_CORES: &'static [&'static str] = &["verge-mihomo", "verge-mihomo-alpha"];
+    pub const VALID_CLASH_CORES: &'static [&'static str] = &["verge-mihomo", "verge-mihomo-stock"];
 
     pub async fn validate_and_fix_config() -> Result<()> {
         let config_path = dirs::verge_path()?;

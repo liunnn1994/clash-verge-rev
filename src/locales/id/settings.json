@@ -300,8 +300,8 @@
     },
     "clashCore": {
       "variants": {
-        "release": "Versi Rilis",
-        "alpha": "Versi Alpha"
+        "ninja": "Provider",
+        "stock": "Open Source"
       }
     },
     "liteMode": {
