@@ -14,13 +14,9 @@ on:
         required: false
         default: ''
 
-# The conflict path pushes a sync branch based on the upstream tag, whose tree
-# contains upstream workflow files — GitHub requires `workflows` scope to push
-# commits that add or update workflow files.
 permissions:
   contents: write
   pull-requests: write
-  workflows: write
 
 env:
   UPSTREAM_REPO: clash-verge-rev/clash-verge-rev
@@ -84,14 +80,16 @@ jobs:
           # $TAG is a tag fetched by `git fetch upstream --tags`, not a branch —
           # "upstream/$TAG" (remote-tracking ref) does not exist for tags.
           git checkout -B "$BRANCH" "$TAG"
-          # Drop upstream-only workflows so merging this PR doesn't enable
-          # them on the fork (same list as the clean-merge path below).
-          for f in autobuild.yml autobuild-check-test.yml check-commit-needs-build.yml \
-                   clean-old-assets.yml telegram-notify.yml pr-ai-slop-review.yml \
-                   pr-ai-slop-review.lock.yml pr-ai-slop-review.md; do
-            git rm -f --ignore-unmatch ".github/workflows/$f"
-          done
-          git commit --allow-empty -m "chore: drop upstream CI workflows from sync branch"
+          # GITHUB_TOKEN cannot push commits that create or update workflow
+          # files, and merging this PR shouldn't enable upstream CI on the
+          # fork anyway — so keep .github/workflows exactly as on main and
+          # squash everything into one commit (upstream commits in the
+          # history would trip the workflow-file check even if the tip tree
+          # deletes them).
+          git rm -rq --ignore-unmatch .github/workflows
+          git checkout origin/main -- .github/workflows
+          git reset --soft origin/main
+          git commit -m "chore: sync upstream $TAG (merge conflicts — needs manual resolve)"
           git push -f origin "$BRANCH"
           if gh pr create \
             --base main --head "$BRANCH" \
