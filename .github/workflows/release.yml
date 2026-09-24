@@ -116,7 +116,7 @@ jobs:
       source_ref: ${{ needs.resolve_release.outputs.source_ref }}
     steps:
       - name: Resolve existing release
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' && !inputs.tag
         id: existing_release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -126,7 +126,7 @@ jobs:
           echo "id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Create or update draft release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.tag
         id: prepare_release
         uses: softprops/action-gh-release@v3
         with:
