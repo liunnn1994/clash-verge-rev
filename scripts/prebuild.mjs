@@ -1,9 +1,9 @@
-import { execFileSync, execSync } from 'child_process'
-import { createHash } from 'crypto'
-import fs from 'fs'
-import fsp from 'fs/promises'
-import path from 'path'
-import zlib from 'zlib'
+import { execFileSync, execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import fs from 'node:fs'
+import fsp from 'node:fs/promises'
+import path from 'node:path'
+import zlib from 'node:zlib'
 
 import AdmZip from 'adm-zip'
 import { glob } from 'glob'
@@ -160,10 +160,29 @@ async function updateHashCache(targetPath) {
 }
 
 // Mihomo release maps
+const META_ALPHA_VERSION_URL =
+  'https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt'
+const META_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`
+let META_ALPHA_VERSION
+
 const META_VERSION_URL =
   'https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt'
 const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`
 let META_VERSION
+
+const META_ALPHA_MAP = {
+  'win32-x64': 'mihomo-windows-amd64-v2',
+  'win32-ia32': 'mihomo-windows-386',
+  'win32-arm64': 'mihomo-windows-arm64',
+  'darwin-x64': 'mihomo-darwin-amd64-v1-go122',
+  'darwin-arm64': 'mihomo-darwin-arm64-go122',
+  'linux-x64': 'mihomo-linux-amd64-v2',
+  'linux-ia32': 'mihomo-linux-386',
+  'linux-arm64': 'mihomo-linux-arm64',
+  'linux-arm': 'mihomo-linux-armv7',
+  'linux-riscv64': 'mihomo-linux-riscv64',
+  'linux-loong64': 'mihomo-linux-loong64',
+}
 
 const META_MAP = {
   'win32-x64': 'mihomo-windows-amd64-v2',
@@ -180,6 +199,40 @@ const META_MAP = {
 }
 
 // Release discovery
+async function getLatestAlphaVersion() {
+  if (!FORCE) {
+    const cached = await getCachedVersion('META_ALPHA_VERSION')
+    if (cached) {
+      META_ALPHA_VERSION = cached
+      return
+    }
+  }
+  const options = {}
+  const httpProxy =
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy
+  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
+
+  try {
+    const response = await fetch(META_ALPHA_VERSION_URL, {
+      ...options,
+      method: 'GET',
+    })
+    if (!response.ok)
+      throw new Error(
+        `Failed to fetch ${META_ALPHA_VERSION_URL}: ${response.status}`,
+      )
+    META_ALPHA_VERSION = (await response.text()).trim()
+    log_info(`Latest alpha version: ${META_ALPHA_VERSION}`)
+    await setCachedVersion('META_ALPHA_VERSION', META_ALPHA_VERSION)
+  } catch (err) {
+    log_error('Error fetching latest alpha version:', err.message)
+    process.exit(1)
+  }
+}
+
 async function getLatestReleaseVersion() {
   if (!FORCE) {
     const cached = await getCachedVersion('META_VERSION')
@@ -215,55 +268,36 @@ async function getLatestReleaseVersion() {
 if (!META_MAP[`${platform}-${arch}`]) {
   throw new Error(`clash meta unsupported platform "${platform}-${arch}"`)
 }
+if (!META_ALPHA_MAP[`${platform}-${arch}`]) {
+  throw new Error(`clash meta alpha unsupported platform "${platform}-${arch}"`)
+}
 
-// =======================
-// Build meta objects
-// =======================
-function clashMetaStock() {
+function clashMetaAlpha() {
+  const name = META_ALPHA_MAP[`${platform}-${arch}`]
+  const isWin = platform === 'win32'
+  const urlExt = isWin ? 'zip' : 'gz'
+  return {
+    name: 'verge-mihomo-alpha',
+    targetFile: `verge-mihomo-alpha-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
+    exeFile: `${name}${isWin ? '.exe' : ''}`,
+    zipFile: `${name}-${META_ALPHA_VERSION}.${urlExt}`,
+    downloadURL: `${META_ALPHA_URL_PREFIX}/${name}-${META_ALPHA_VERSION}.${urlExt}`,
+  }
+}
+
+function clashMeta() {
   const name = META_MAP[`${platform}-${arch}`]
   const isWin = platform === 'win32'
   const urlExt = isWin ? 'zip' : 'gz'
   return {
-    name: 'verge-mihomo-stock',
-    targetFile: `verge-mihomo-stock-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
+    name: 'verge-mihomo',
+    targetFile: `verge-mihomo-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
     exeFile: `${name}${isWin ? '.exe' : ''}`,
     zipFile: `${name}-${META_VERSION}.${urlExt}`,
     downloadURL: `${META_URL_PREFIX}/${META_VERSION}/${name}-${META_VERSION}.${urlExt}`,
   }
 }
 
-// Provider ninja kernel (kachetong1314/mihomo-ninja) — a raw binary that decodes
-// the obfuscated ninja subscription itself (incl. the `#!PASS-INFO` segment), so
-// no client-side decode is needed. verge-mihomo = this kernel.
-const NINJA_URL_PREFIX =
-  'https://github.com/kachetong1314/mihomo-ninja/releases/latest/download'
-const NINJA_MAP = {
-  'win32-x64': 'ninja-windows-amd64.exe',
-  'win32-ia32': 'ninja-windows-386.exe',
-  'win32-arm64': 'ninja-windows-arm64.exe',
-  'darwin-x64': 'ninja-darwin-amd64',
-  'darwin-arm64': 'ninja-darwin-arm64',
-  'linux-x64': 'ninja-linux-amd64',
-  'linux-arm64': 'ninja-linux-arm64',
-  'linux-arm': 'ninja-linux-armv7',
-}
-function clashMeta() {
-  const asset = NINJA_MAP[`${platform}-${arch}`]
-  if (!asset)
-    throw new Error(`ninja kernel: no asset mapped for ${platform}-${arch}`)
-  const isWin = platform === 'win32'
-  return {
-    name: 'verge-mihomo',
-    targetFile: `verge-mihomo-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
-    exeFile: asset,
-    zipFile: `${asset}.bin`, // raw-binary marker (handled below, no archive)
-    downloadURL: `${NINJA_URL_PREFIX}/${asset}`,
-  }
-}
-
-// =======================
-// download helper (增强：status + magic bytes)
-// =======================
 async function downloadFile(url, outPath) {
   const options = {}
   const httpProxy =
@@ -365,11 +399,6 @@ async function resolveSidecar(binInfo) {
       await fsp.rename(path.join(tempDir, extracted), sidecarPath)
       await fsp.chmod(sidecarPath, 0o755)
       log_success(`tgz processed: "${name}"`)
-    } else if (zipFile.endsWith('.bin')) {
-      // raw binary (no archive) — move it straight to the sidecar path
-      await fsp.rename(tempZip, sidecarPath)
-      if (platform !== 'win32') await fsp.chmod(sidecarPath, 0o755)
-      log_success(`raw binary placed: "${name}"`)
     } else {
       const readStream = fs.createReadStream(tempZip)
       const writeStream = fs.createWriteStream(sidecarPath)
@@ -456,7 +485,7 @@ const resolvePlugin = async () => {
     const zip = new AdmZip(tempZip)
     zip
       .getEntries()
-      .forEach((entry) => log_debug(`"SimpleSC" entry`, entry.entryName))
+      .forEach((entry) => void log_debug(`"SimpleSC" entry`, entry.entryName))
     zip.extractAllTo(tempDir, true)
     if (fs.existsSync(tempDll)) {
       await fsp.cp(tempDll, pluginPath, { recursive: true, force: true })
@@ -515,22 +544,7 @@ const resolveServicePermission = async () => {
   }
 }
 
-// =======================
-// Other resource resolvers (service, mmdb, geosite, geoip, enableLoopback)
-// =======================
-// The service binary version MUST match the `clash_verge_service_ipc` crate
-// version the app compiles against (src-tauri/Cargo.toml). If they diverge, the
-// running service rejects the client with "service protocol version does not
-// match". The download tag is derived from Cargo.toml via
-// scripts/service-release.mjs instead of fetching `releases/latest`, which can
-// be ahead of the pinned crate version.
-
-// Records the version of the binaries currently sitting in SERVICE_DIR so we can
-// detect staleness (Cargo.toml bumped but resources/ still holds old binaries).
-// Without this, the "skip if exists" shortcut in resolveServiceBundle would keep
-// shipping a mismatched service. Kept under node_modules so it never pollutes the repo.
-const SERVICE_VERSION_MARKER = path.join(TEMP_DIR, '.service-version')
-
+// Other resources
 const SERVICE_BINARIES = [
   'clash-verge-service',
   'clash-verge-service-install',
@@ -539,27 +553,10 @@ const SERVICE_BINARIES = [
 
 function serviceFileInfo(name) {
   const ext = platform === 'win32' ? '.exe' : ''
-  const suffix = platform === 'linux' ? '-' + SIDECAR_HOST : ''
+  const suffix = platform === 'linux' ? `-${SIDECAR_HOST}` : ''
   return {
     sourceFile: `${name}${ext}`,
     targetFile: `${name}${suffix}${ext}`,
-  }
-}
-
-async function readServiceVersionMarker() {
-  try {
-    return (await fsp.readFile(SERVICE_VERSION_MARKER, 'utf-8')).trim()
-  } catch {
-    return null
-  }
-}
-
-async function writeServiceVersionMarker(version) {
-  try {
-    await fsp.mkdir(TEMP_DIR, { recursive: true })
-    await fsp.writeFile(SERVICE_VERSION_MARKER, version, 'utf-8')
-  } catch (err) {
-    log_debug('Failed to write service version marker:', err.message)
   }
 }
 
@@ -589,20 +586,46 @@ async function resolveServiceBundle() {
     path.join(cwd, 'src-tauri', 'Cargo.toml'),
     'utf8',
   )
-  const {
-    version: serviceVersion,
-    archiveFile,
-    downloadURL,
-  } = resolveServiceRelease(cargoManifest, SIDECAR_HOST, platform)
-
-  const allExist = files.every(({ targetPath }) => fs.existsSync(targetPath))
-  const marker = await readServiceVersionMarker()
-  if (!FORCE && allExist && marker === serviceVersion) {
-    log_success(
-      `"clash-verge-service-ipc" ${serviceVersion} already exists, skipping download`,
+  const serviceDependency = cargoManifest
+    .split(/\r?\n/)
+    .find((line) => line.trimStart().startsWith('clash_verge_service_ipc ='))
+  const sourcePath = serviceDependency?.match(/\bpath\s*=\s*"([^"]+)"/)?.[1]
+  if (sourcePath) {
+    const manifest = path.resolve(cwd, 'src-tauri', sourcePath, 'Cargo.toml')
+    const targetDirectory = path.join(cwd, 'target', 'bundled-service')
+    execFileSync(
+      'cargo',
+      [
+        'build',
+        '--manifest-path',
+        manifest,
+        '--target-dir',
+        targetDirectory,
+        '--target',
+        SIDECAR_HOST,
+        '--release',
+        '--features',
+        'standalone,client',
+        '--bins',
+      ],
+      { stdio: 'inherit' },
     )
+    await fsp.mkdir(SERVICE_DIR, { recursive: true })
+    for (const { sourceFile, targetPath } of files) {
+      await fsp.copyFile(
+        path.join(targetDirectory, SIDECAR_HOST, 'release', sourceFile),
+        targetPath,
+      )
+      if (platform !== 'win32') await fsp.chmod(targetPath, 0o755)
+      await updateHashCache(targetPath)
+    }
     return
   }
+  const { archiveFile, downloadURL } = resolveServiceRelease(
+    cargoManifest,
+    SIDECAR_HOST,
+    platform,
+  )
   const tempDir = path.join(TEMP_DIR, 'clash-verge-service-ipc')
   const tempArchive = path.join(tempDir, archiveFile)
 
@@ -616,8 +639,9 @@ async function resolveServiceBundle() {
       const zip = new AdmZip(tempArchive)
       zip
         .getEntries()
-        .forEach((entry) =>
-          log_debug('"clash-verge-service-ipc" entry:', entry.entryName),
+        .forEach(
+          (entry) =>
+            void log_debug('"clash-verge-service-ipc" entry:', entry.entryName),
         )
       zip.extractAllTo(tempDir, true)
     } else {
@@ -636,7 +660,6 @@ async function resolveServiceBundle() {
       log_success(`Extracted service file: ${targetFile}`)
     }
 
-    await writeServiceVersionMarker(serviceVersion)
     log_success(`service bundle finished: ${archiveFile}`)
   } finally {
     await fsp.rm(tempDir, { recursive: true, force: true })
@@ -657,21 +680,15 @@ async function resolveCoreHashes() {
   const lines = []
   for (const [define, name] of [
     ['MIHOMO_SHA256', 'verge-mihomo'],
-    // This fork does not build the alpha sidecar — skip it when absent.
-    // installer.nsi guards both defines with `!ifdef`, so omitting one is fine.
     ['MIHOMO_ALPHA_SHA256', 'verge-mihomo-alpha'],
   ]) {
     const sidecar = path.join(SIDECAR_DIR, `${name}-${SIDECAR_HOST}.exe`)
-    if (!fs.existsSync(sidecar)) {
-      log_debug(`core hash skipped (not built): ${name}`)
-      continue
-    }
     const digest = createHash('sha256')
       .update(await fsp.readFile(sidecar))
       .digest('hex')
     lines.push(`!define ${define} "${digest}"`)
   }
-  await fsp.writeFile(CORE_HASHES_NSH, lines.join('\n') + '\n')
+  await fsp.writeFile(CORE_HASHES_NSH, `${lines.join('\n')}\n`)
   log_success(`Generated ${CORE_HASHES_NSH}`)
 }
 
@@ -679,6 +696,11 @@ const resolveMmdb = () =>
   resolveResource({
     file: 'Country.mmdb',
     downloadURL: `https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb`,
+  })
+const resolveASNMmdb = () =>
+  resolveResource({
+    file: 'ASN.mmdb',
+    downloadURL: `https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb`,
   })
 const resolveGeosite = () =>
   resolveResource({
@@ -707,38 +729,17 @@ const resolveUnSetDnsScript = () =>
     localPath: path.join(cwd, 'scripts/unset_dns.sh'),
   })
 
-// In CI (GITHUB_REPOSITORY set), point the in-app updater at THIS repo's
-// `updater` release so the fork self-updates from its own GitHub (not upstream).
-// No-op locally (dev builds keep the committed endpoints).
-async function rewriteUpdaterEndpoints() {
-  const repo = process.env.GITHUB_REPOSITORY
-  if (!repo) return
-  const confPath = path.join(cwd, 'src-tauri/tauri.conf.json')
-  const conf = JSON.parse(await fsp.readFile(confPath, 'utf-8'))
-  const raw = `https://github.com/${repo}/releases/download/updater/update.json`
-  conf.plugins.updater.endpoints = [
-    `https://gh-proxy.com/${raw}`,
-    `https://mirror.ghproxy.com/${raw}`,
-    raw,
-  ]
-  await fsp.writeFile(confPath, JSON.stringify(conf, null, 2) + '\n')
-  log_success(`updater endpoints -> ${repo}`)
-}
-
-// =======================
-// Tasks
-// =======================
 const tasks = [
-  { name: 'updater-endpoints', func: rewriteUpdaterEndpoints, retry: 1 },
   {
-    name: 'verge-mihomo-stock',
+    name: 'verge-mihomo-alpha',
     func: () =>
-      getLatestReleaseVersion().then(() => resolveSidecar(clashMetaStock())),
+      getLatestAlphaVersion().then(() => resolveSidecar(clashMetaAlpha())),
     retry: 5,
   },
   {
     name: 'verge-mihomo',
-    func: () => resolveSidecar(clashMeta()),
+    func: () =>
+      getLatestReleaseVersion().then(() => resolveSidecar(clashMeta())),
     retry: 5,
   },
   // After both sidecar tasks: it hashes what they downloaded.
@@ -746,6 +747,7 @@ const tasks = [
   { name: 'plugin', func: resolvePlugin, retry: 5, winOnly: true },
   { name: 'service', func: resolveServiceBundle, retry: 5 },
   { name: 'mmdb', func: resolveMmdb, retry: 5 },
+  { name: 'asn_mmdb', func: resolveASNMmdb, retry: 5 },
   { name: 'geosite', func: resolveGeosite, retry: 5 },
   { name: 'geoip', func: resolveGeoIP, retry: 5 },
   {

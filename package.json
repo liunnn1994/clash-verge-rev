@@ -1,6 +1,6 @@
 {
   "name": "clash-verge",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "license": "GPL-3.0-only",
   "scripts": {
     "prepare": "husky || true",
@@ -103,6 +103,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "@wdio/tauri-service": "1.4.0",
     "adm-zip": "^0.6.0",
+    "axios": "^1.16.1",
     "cli-color": "^2.0.4",
     "commander": "^15.0.0",
     "cross-env": "^10.1.0",

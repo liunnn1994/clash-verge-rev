@@ -80,12 +80,11 @@ pub struct IVerge {
 
     pub enable_bypass_check: Option<bool>,
 
-    /// enable dns settings - this controls whether dns_config.yaml is applied
+    /// Initial DNS override preference for profiles without a saved setting.
     pub enable_dns_settings: Option<bool>,
 
-    // Force-enable confirmation is valid only for the current app session.
-    #[serde(skip)]
-    pub dns_override_confirmation: Option<String>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub profile_dns_settings: std::collections::BTreeMap<String, super::dns::ProfileDnsSettings>,
 
     pub use_default_bypass: Option<bool>,
 
@@ -235,9 +234,7 @@ pub struct IVergeTheme {
 }
 
 impl IVerge {
-    /// 有效的clash核心名称
-    pub const VALID_CLASH_CORES: &'static [&'static str] =
-        &["verge-mihomo", "verge-mihomo-stock", "verge-mihomo-alpha"];
+    pub const VALID_CLASH_CORES: &'static [&'static str] = &["verge-mihomo", "verge-mihomo-alpha"];
 
     pub async fn validate_and_fix_config() -> Result<()> {
         let config_path = dirs::verge_path()?;
