@@ -242,6 +242,7 @@ const NINJA_MAP = {
   'darwin-arm64': 'ninja-darwin-arm64',
   'linux-x64': 'ninja-linux-amd64',
   'linux-arm64': 'ninja-linux-arm64',
+  'linux-arm': 'ninja-linux-armv7',
 }
 function ninjaKernel() {
   const asset = NINJA_MAP[`${platform}-${arch}`]
