@@ -25,14 +25,14 @@ import { showNotice } from '@/services/notice-service'
 
 const VALID_CORE = [
   {
-    name: 'Ninja',
+    name: 'Mihomo',
     core: 'verge-mihomo',
-    chipKey: 'settings.modals.clashCore.variants.ninja',
+    chipKey: 'settings.modals.clashCore.variants.release',
   },
   {
-    name: 'Mihomo',
-    core: 'verge-mihomo-stock',
-    chipKey: 'settings.modals.clashCore.variants.stock',
+    name: 'Mihomo Alpha',
+    core: 'verge-mihomo-alpha',
+    chipKey: 'settings.modals.clashCore.variants.alpha',
   },
 ]
 
