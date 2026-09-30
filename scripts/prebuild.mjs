@@ -160,10 +160,29 @@ async function updateHashCache(targetPath) {
 }
 
 // Mihomo release maps
+const META_ALPHA_VERSION_URL =
+  'https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt'
+const META_ALPHA_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha`
+let META_ALPHA_VERSION
+
 const META_VERSION_URL =
   'https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt'
 const META_URL_PREFIX = `https://github.com/MetaCubeX/mihomo/releases/download`
 let META_VERSION
+
+const META_ALPHA_MAP = {
+  'win32-x64': 'mihomo-windows-amd64-v2',
+  'win32-ia32': 'mihomo-windows-386',
+  'win32-arm64': 'mihomo-windows-arm64',
+  'darwin-x64': 'mihomo-darwin-amd64-v1-go122',
+  'darwin-arm64': 'mihomo-darwin-arm64-go122',
+  'linux-x64': 'mihomo-linux-amd64-v2',
+  'linux-ia32': 'mihomo-linux-386',
+  'linux-arm64': 'mihomo-linux-arm64',
+  'linux-arm': 'mihomo-linux-armv7',
+  'linux-riscv64': 'mihomo-linux-riscv64',
+  'linux-loong64': 'mihomo-linux-loong64',
+}
 
 const META_MAP = {
   'win32-x64': 'mihomo-windows-amd64-v2',
@@ -180,6 +199,40 @@ const META_MAP = {
 }
 
 // Release discovery
+async function getLatestAlphaVersion() {
+  if (!FORCE) {
+    const cached = await getCachedVersion('META_ALPHA_VERSION')
+    if (cached) {
+      META_ALPHA_VERSION = cached
+      return
+    }
+  }
+  const options = {}
+  const httpProxy =
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy
+  if (httpProxy) options.agent = new HttpsProxyAgent(httpProxy)
+
+  try {
+    const response = await fetch(META_ALPHA_VERSION_URL, {
+      ...options,
+      method: 'GET',
+    })
+    if (!response.ok)
+      throw new Error(
+        `Failed to fetch ${META_ALPHA_VERSION_URL}: ${response.status}`,
+      )
+    META_ALPHA_VERSION = (await response.text()).trim()
+    log_info(`Latest alpha version: ${META_ALPHA_VERSION}`)
+    await setCachedVersion('META_ALPHA_VERSION', META_ALPHA_VERSION)
+  } catch (err) {
+    log_error('Error fetching latest alpha version:', err.message)
+    process.exit(1)
+  }
+}
+
 async function getLatestReleaseVersion() {
   if (!FORCE) {
     const cached = await getCachedVersion('META_VERSION')
@@ -215,46 +268,33 @@ async function getLatestReleaseVersion() {
 if (!META_MAP[`${platform}-${arch}`]) {
   throw new Error(`clash meta unsupported platform "${platform}-${arch}"`)
 }
+if (!META_ALPHA_MAP[`${platform}-${arch}`]) {
+  throw new Error(`clash meta alpha unsupported platform "${platform}-${arch}"`)
+}
 
-function clashMetaStock() {
+function clashMetaAlpha() {
+  const name = META_ALPHA_MAP[`${platform}-${arch}`]
+  const isWin = platform === 'win32'
+  const urlExt = isWin ? 'zip' : 'gz'
+  return {
+    name: 'verge-mihomo-alpha',
+    targetFile: `verge-mihomo-alpha-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
+    exeFile: `${name}${isWin ? '.exe' : ''}`,
+    zipFile: `${name}-${META_ALPHA_VERSION}.${urlExt}`,
+    downloadURL: `${META_ALPHA_URL_PREFIX}/${name}-${META_ALPHA_VERSION}.${urlExt}`,
+  }
+}
+
+function clashMeta() {
   const name = META_MAP[`${platform}-${arch}`]
   const isWin = platform === 'win32'
   const urlExt = isWin ? 'zip' : 'gz'
   return {
-    name: 'verge-mihomo-stock',
-    targetFile: `verge-mihomo-stock-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
+    name: 'verge-mihomo',
+    targetFile: `verge-mihomo-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
     exeFile: `${name}${isWin ? '.exe' : ''}`,
     zipFile: `${name}-${META_VERSION}.${urlExt}`,
     downloadURL: `${META_URL_PREFIX}/${META_VERSION}/${name}-${META_VERSION}.${urlExt}`,
-  }
-}
-
-// Provider ninja kernel (kachetong1314/mihomo-ninja) — a raw binary that decodes
-// the obfuscated ninja subscription itself (incl. the `#!PASS-INFO` segment), so
-// no client-side decode is needed. verge-mihomo = this kernel.
-const NINJA_URL_PREFIX =
-  'https://github.com/kachetong1314/mihomo-ninja/releases/latest/download'
-const NINJA_MAP = {
-  'win32-x64': 'ninja-windows-amd64.exe',
-  'win32-ia32': 'ninja-windows-386.exe',
-  'win32-arm64': 'ninja-windows-arm64.exe',
-  'darwin-x64': 'ninja-darwin-amd64',
-  'darwin-arm64': 'ninja-darwin-arm64',
-  'linux-x64': 'ninja-linux-amd64',
-  'linux-arm64': 'ninja-linux-arm64',
-  'linux-arm': 'ninja-linux-armv7',
-}
-function ninjaKernel() {
-  const asset = NINJA_MAP[`${platform}-${arch}`]
-  if (!asset)
-    throw new Error(`ninja kernel: no asset mapped for ${platform}-${arch}`)
-  const isWin = platform === 'win32'
-  return {
-    name: 'verge-mihomo',
-    targetFile: `verge-mihomo-${SIDECAR_HOST}${isWin ? '.exe' : ''}`,
-    exeFile: asset,
-    zipFile: `${asset}.bin`, // raw-binary marker (handled below, no archive)
-    downloadURL: `${NINJA_URL_PREFIX}/${asset}`,
   }
 }
 
@@ -359,11 +399,6 @@ async function resolveSidecar(binInfo) {
       await fsp.rename(path.join(tempDir, extracted), sidecarPath)
       await fsp.chmod(sidecarPath, 0o755)
       log_success(`tgz processed: "${name}"`)
-    } else if (zipFile.endsWith('.bin')) {
-      // raw binary (no archive) — move it straight to the sidecar path
-      await fsp.rename(tempZip, sidecarPath)
-      if (platform !== 'win32') await fsp.chmod(sidecarPath, 0o755)
-      log_success(`raw binary placed: "${name}"`)
     } else {
       const readStream = fs.createReadStream(tempZip)
       const writeStream = fs.createWriteStream(sidecarPath)
@@ -645,7 +680,7 @@ async function resolveCoreHashes() {
   const lines = []
   for (const [define, name] of [
     ['MIHOMO_SHA256', 'verge-mihomo'],
-    ['MIHOMO_STOCK_SHA256', 'verge-mihomo-stock'],
+    ['MIHOMO_ALPHA_SHA256', 'verge-mihomo-alpha'],
   ]) {
     const sidecar = path.join(SIDECAR_DIR, `${name}-${SIDECAR_HOST}.exe`)
     const digest = createHash('sha256')
@@ -696,14 +731,15 @@ const resolveUnSetDnsScript = () =>
 
 const tasks = [
   {
-    name: 'verge-mihomo-stock',
+    name: 'verge-mihomo-alpha',
     func: () =>
-      getLatestReleaseVersion().then(() => resolveSidecar(clashMetaStock())),
+      getLatestAlphaVersion().then(() => resolveSidecar(clashMetaAlpha())),
     retry: 5,
   },
   {
     name: 'verge-mihomo',
-    func: () => resolveSidecar(ninjaKernel()),
+    func: () =>
+      getLatestReleaseVersion().then(() => resolveSidecar(clashMeta())),
     retry: 5,
   },
   // After both sidecar tasks: it hashes what they downloaded.
