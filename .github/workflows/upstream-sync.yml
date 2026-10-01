@@ -59,7 +59,7 @@ jobs:
           set -euo pipefail
           git remote add upstream "https://github.com/$UPSTREAM_REPO.git"
           # Use an isolated ref; upstream tags must not overwrite fork release tags.
-          git fetch upstream "refs/tags/$TAG:refs/remotes/upstream/release"
+          git fetch --no-tags upstream "refs/tags/$TAG:refs/remotes/upstream/release"
           git restore --source=refs/remotes/upstream/release --staged --worktree -- . \
             ':(exclude).github/workflows' ':(exclude)AGENTS.md' \
             ':(exclude)scripts/fork-overlay.mjs' ':(exclude)scripts/ninja-kernel.mjs'
@@ -72,6 +72,8 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "chore: sync upstream $TAG with the Ninja kernel overlay"
           fi
+          git tag "$TAG"
+          [ "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)" ]
       - name: Publish source and dispatch one release build
         if: steps.upstream.outputs.skip != 'true' && !inputs.preview_only
         env:
@@ -82,7 +84,6 @@ jobs:
             echo "::error::Release $TAG already exists; automatic sync must not replace it"
             exit 1
           fi
-          git tag "$TAG"
           git push --atomic origin HEAD:main "refs/tags/$TAG"
           # GITHUB_TOKEN tag pushes do not trigger the release workflow.
           gh workflow run release.yml -f tag="$TAG"
