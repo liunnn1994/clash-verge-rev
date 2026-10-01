@@ -25,6 +25,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useState)
     .mockReturnValueOnce([false, vi.fn()])
+    .mockReturnValueOnce(['', vi.fn()])
     .mockReturnValueOnce([false, vi.fn()])
     .mockReturnValueOnce([true, vi.fn()])
 })

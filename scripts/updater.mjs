@@ -119,7 +119,8 @@ async function processRelease(github, options, tag, isAlpha) {
     }
 
     const promises = release.assets.map(async (asset) => {
-      const { name, browser_download_url } = asset
+      const { name } = asset
+      const browser_download_url = `${asset.browser_download_url}?asset=${asset.id}`
 
       if (name.endsWith('x64-setup.exe')) {
         updateData.platforms['windows-x86_64'].url = browser_download_url

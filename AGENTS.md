@@ -35,7 +35,10 @@ release; do not repeat that.
    `src-tauri/packages/windows/installer.nsi`
    (`MIHOMO_STOCK_SHA256`, process-kill and service-staging blocks),
    `scripts/dev-service.mjs`, and the core-viewer UI + all locale files
-   (`variants.ninja` / `variants.stock`).
+   (`variants.ninja` / `variants.stock`). The service IPC dependency and
+   prebuilt helpers also come from `liunnn1994/clash-verge-service-ipc`:
+   upstream v2.7.3 rejects `verge-mihomo-stock` during installation and
+   inspection. Keep the fork dependency and its helper download source paired.
 2. **Subscription UA gate.** The provider's subscription server only
    serves requests whose User-Agent starts with `clash-ninja`; anything
    else gets 403 Forbidden. `src-tauri/src/utils/network.rs` sets that

@@ -14,13 +14,14 @@ import {
   restartCore,
   type RunState,
 } from '@/services/cmds'
-import { showNotice } from '@/services/notice-service'
+import { errorDetail, showNotice } from '@/services/notice-service'
 import { setCacheData, useQuery } from '@/services/query-client'
 
 export const ServiceMigrationDialog = () => {
   const { t } = useTranslation()
   const pageVisible = useVisibility()
   const [loading, setLoading] = useState(false)
+  const [actionError, setActionError] = useState('')
   const [stateRefreshFailed, setStateRefreshFailed] = useState(false)
   const [workflowIncomplete, setWorkflowIncomplete] = useState(false)
   const { data: runState } = useQuery({
@@ -78,6 +79,7 @@ export const ServiceMigrationDialog = () => {
 
   const handleServiceAction = async () => {
     setLoading(true)
+    setActionError('')
     setWorkflowIncomplete(true)
     let actionSucceeded = false
     try {
@@ -90,6 +92,7 @@ export const ServiceMigrationDialog = () => {
       }
       actionSucceeded = true
     } catch (error) {
+      setActionError(errorDetail(error))
       showNotice.error(
         'layout.components.serviceMigration.errors.actionFailed',
         error,
@@ -101,6 +104,7 @@ export const ServiceMigrationDialog = () => {
       await refreshRunState()
       initialRefreshSucceeded = true
     } catch (error) {
+      setActionError(errorDetail(error))
       showNotice.error(
         'layout.components.serviceMigration.errors.stateRefreshFailed',
         error,
@@ -116,6 +120,7 @@ export const ServiceMigrationDialog = () => {
       await restartCore()
       restartSucceeded = true
     } catch (error) {
+      setActionError(errorDetail(error))
       showNotice.error(
         'layout.components.serviceMigration.errors.restartFailed',
         error,
@@ -127,6 +132,7 @@ export const ServiceMigrationDialog = () => {
       await refreshRunState()
       finalRefreshSucceeded = true
     } catch (error) {
+      setActionError(errorDetail(error))
       showNotice.error(
         'layout.components.serviceMigration.errors.stateRefreshFailed',
         error,
@@ -141,6 +147,7 @@ export const ServiceMigrationDialog = () => {
 
   const handleContinue = async () => {
     setLoading(true)
+    setActionError('')
     setWorkflowIncomplete(true)
     let startupError: unknown
     try {
@@ -154,12 +161,14 @@ export const ServiceMigrationDialog = () => {
       await refreshRunState()
       installRefreshSucceeded = true
     } catch (error) {
+      setActionError(errorDetail(error))
       showNotice.error(
         'layout.components.serviceMigration.errors.stateRefreshFailed',
         error,
       )
     }
     if (startupError) {
+      setActionError(errorDetail(startupError))
       showNotice.error(
         'layout.components.serviceMigration.errors.sidecarFailed',
         startupError,
@@ -197,6 +206,11 @@ export const ServiceMigrationDialog = () => {
               : 'layout.components.serviceMigration.unavailableMessage',
         )}
       </Alert>
+      {actionError && (
+        <Alert severity="error" sx={{ mt: 2, whiteSpace: 'pre-wrap' }}>
+          {actionError}
+        </Alert>
+      )}
     </BaseDialog>
   )
 }
