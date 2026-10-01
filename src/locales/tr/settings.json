@@ -300,8 +300,8 @@
     },
     "clashCore": {
       "variants": {
-        "ninja": "Provider",
-        "stock": "Open Source"
+        "release": "Kararlı Sürüm",
+        "alpha": "Alfa Sürümü"
       }
     },
     "liteMode": {

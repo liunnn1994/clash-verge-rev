@@ -300,8 +300,8 @@
     },
     "clashCore": {
       "variants": {
-        "ninja": "供應商",
-        "stock": "開源"
+        "release": "正式版",
+        "alpha": "預覽版"
       }
     },
     "liteMode": {

@@ -25,6 +25,7 @@ pub enum ChainType {
 #[derive(Debug, Clone)]
 pub enum ChainSupport {
     ClashMeta,
+    ClashMetaAlpha,
 }
 
 // Helper trait to allow async conversion
@@ -86,9 +87,17 @@ impl ChainItem {
         // meta 1.13.2 alpn string 转 数组
         let hy_alpn = Self::to_script("verge_hy_alpn", include_str!("./builtin/meta_hy_alpn.js"));
 
+        // meta 的一些处理
+        let meta_guard_alpha = Self::to_script("verge_meta_guard", include_str!("./builtin/meta_guard.js"));
+
+        // meta 1.13.2 alpn string 转 数组
+        let hy_alpn_alpha = Self::to_script("verge_hy_alpn", include_str!("./builtin/meta_hy_alpn.js"));
+
         vec![
             (ChainSupport::ClashMeta, hy_alpn),
             (ChainSupport::ClashMeta, meta_guard),
+            (ChainSupport::ClashMetaAlpha, hy_alpn_alpha),
+            (ChainSupport::ClashMetaAlpha, meta_guard_alpha),
         ]
     }
 
@@ -105,7 +114,7 @@ impl ChainSupport {
         match core {
             Some(core) => matches!(
                 (self, core.as_str()),
-                (Self::ClashMeta, "verge-mihomo") | (Self::ClashMeta, "verge-mihomo-stock")
+                (Self::ClashMeta, "verge-mihomo") | (Self::ClashMetaAlpha, "verge-mihomo-alpha")
             ),
             None => true,
         }

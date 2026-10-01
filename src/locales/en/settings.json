@@ -300,8 +300,8 @@
     },
     "clashCore": {
       "variants": {
-        "ninja": "Provider",
-        "stock": "Open Source"
+        "release": "Release Version",
+        "alpha": "Alpha Version"
       }
     },
     "liteMode": {

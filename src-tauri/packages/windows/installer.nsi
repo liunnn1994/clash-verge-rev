@@ -566,19 +566,19 @@ FunctionEnd
     !endif
   ${EndIf}
 
-  ; Check if verge-mihomo-stock.exe is running
+  ; Check if verge-mihomo-alpha.exe is running
   !if "${INSTALLMODE}" == "currentUser"
-    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-stock.exe"
+    nsis_tauri_utils::FindProcessCurrentUser "verge-mihomo-alpha.exe"
   !else
-    nsis_tauri_utils::FindProcess "verge-mihomo-stock.exe"
+    nsis_tauri_utils::FindProcess "verge-mihomo-alpha.exe"
   !endif
   Pop $R0
   ${If} $R0 = 0
-    DetailPrint "Kill verge-mihomo-stock.exe..."
+    DetailPrint "Kill verge-mihomo-alpha.exe..."
     !if "${INSTALLMODE}" == "currentUser"
-      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-stock.exe"
+      nsis_tauri_utils::KillProcessCurrentUser "verge-mihomo-alpha.exe"
     !else
-      nsis_tauri_utils::KillProcess "verge-mihomo-stock.exe"
+      nsis_tauri_utils::KillProcess "verge-mihomo-alpha.exe"
     !endif
   ${EndIf}
 
@@ -972,11 +972,11 @@ Section Install
     Pop $0
     ${IfThen} $0 != 0 ${|} DetailPrint "Staging verge-mihomo returned $0" ${|}
   !endif
-  !ifdef MIHOMO_STOCK_SHA256
-    DetailPrint "Staging verge-mihomo-stock for ${PRODUCTNAME} Service..."
-    nsExec::ExecToLog '"$INSTDIR\resources\clash-verge-service-install.exe" --install-core "$INSTDIR\verge-mihomo-stock.exe" --sha256 "${MIHOMO_STOCK_SHA256}"'
+  !ifdef MIHOMO_ALPHA_SHA256
+    DetailPrint "Staging verge-mihomo-alpha for ${PRODUCTNAME} Service..."
+    nsExec::ExecToLog '"$INSTDIR\resources\clash-verge-service-install.exe" --install-core "$INSTDIR\verge-mihomo-alpha.exe" --sha256 "${MIHOMO_ALPHA_SHA256}"'
     Pop $0
-    ${IfThen} $0 != 0 ${|} DetailPrint "Staging verge-mihomo-stock returned $0" ${|}
+    ${IfThen} $0 != 0 ${|} DetailPrint "Staging verge-mihomo-alpha returned $0" ${|}
   !endif
 
   !insertmacro StartVergeService

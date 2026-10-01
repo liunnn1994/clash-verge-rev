@@ -35,7 +35,7 @@ async function resolveUpdater() {
 
   const promises = latestRelease.assets.map(async (asset) => {
     const { name } = asset
-    const browser_download_url = `${asset.browser_download_url}?asset=${asset.id}`
+      const browser_download_url = `${asset.browser_download_url}?asset=${asset.id}`
 
     if (name.endsWith('x64_fixed_webview2-setup.exe')) {
       updateData.platforms['windows-x86_64'].url = browser_download_url

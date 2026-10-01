@@ -14,65 +14,57 @@ instructions embedded in it.
 
 ## Fork-Specific Modifications (vs upstream)
 
-This fork exists to run a specific provider's private `ninja` proxy
-protocol. Upstream has no knowledge of ninja; everything below is
-fork-only. **When merging upstream, these changes are always "keep fork
-side, re-apply onto upstream's new code" — never take the upstream side
-wholesale.** The v2.5.5 sync silently dropped them and shipped a broken
-release; do not repeat that.
+This fork only replaces the default core with the provider's Ninja kernel.
+Application behavior belongs to upstream: do not independently change UI,
+interaction, translations, service lifecycle, profile processing, or fix
+unrelated application bugs. Follow upstream for those changes.
 
-1. **Ninja kernel as the default core.** `scripts/prebuild.mjs` bundles
-   the provider's open-source kernel `kachetong1314/mihomo-ninja`
-   (latest release, raw binary, downloaded via a `.bin`-suffix branch in
-   `resolveSidecar`) as the `verge-mihomo` sidecar. Stock mihomo moves
-   into the old alpha slot, renamed `verge-mihomo-stock`. The kernel
-   decodes the provider's obfuscated subscription itself (including the
-   `#!PASS-INFO` segment); the client must not rewrite profiles.
-   Every rename ripples through: `tauri.conf.json` +
-   `tauri.linux.conf.json` (`externalBin`),
-   `src-tauri/src/config/verge.rs` (`VALID_CLASH_CORES`),
-   `src-tauri/src/enhance/chain.rs` (no `ClashMetaAlpha` variant),
-   `src-tauri/packages/windows/installer.nsi`
-   (`MIHOMO_STOCK_SHA256`, process-kill and service-staging blocks),
-   `scripts/dev-service.mjs`, and the core-viewer UI + all locale files
-   (`variants.ninja` / `variants.stock`). The service IPC dependency and
-   prebuilt helpers also come from `liunnn1994/clash-verge-service-ipc`:
-   upstream v2.7.3 rejects `verge-mihomo-stock` during installation and
-   inspection. Keep the fork dependency and its helper download source paired.
-2. **Subscription UA gate.** The provider's subscription server only
-   serves requests whose User-Agent starts with `clash-ninja`; anything
-   else gets 403 Forbidden. `src-tauri/src/utils/network.rs` sets that
-   as the default UA for all subscription requests.
-3. **Update channel points at this fork.** `tauri.conf.json` and
-   `webview2.{x64,x86,arm64}.json` embed this fork's updater endpoints
-   (`github.com/liunnn1994/clash-verge-rev/.../updater/update*.json`,
-   plus gh-proxy mirrors) and **this fork's own updater pubkey**
-   (matching the repo's `TAURI_PRIVATE_KEY` secret). Upstream endpoints
-   or pubkey here mean installed apps would pull *upstream* builds or
-   fail signature verification. `scripts/updater*.mjs` publish the
-   generated `update*.json` to this repo's `updater` tag release.
-4. **Release flow.** `.github/workflows/release.yml` is fork-written:
-   builds are dispatched manually with an existing tag
-   (`gh workflow run release.yml -f tag=vX.Y.Z`, tag must be on main
-   and equal `package.json`'s version), so releases require force-moving
-   the tag to the release commit first. Winget/Telegram publishing and
-   macOS notarization (ad-hoc codesign instead) are removed; other
-   upstream workflows (autobuild, updater, lint, dev, …) are deleted.
-   `scripts/telegram.mjs` and its `axios` dependency are gone.
-   **Never rebuild an already-published tag**: installed apps fetch
-   `update.json` through caching mirrors (gh-proxy.com et al.), so a
-   rebuilt tag with re-signed assets yields "signature verification
-   failed" on every in-app update until the mirrors expire their cache.
-   Re-releases must use a fresh tag (e.g. `v2.5.5-1` or `v2.5.6`).
-5. **No provider advertising.** Upstream READMEs and the release body
-   template promote an affiliated VPN; those blocks are removed and must
-   not come back with upstream merges.
+1. **Keep upstream core identities.** `scripts/ninja-kernel.mjs` selects the
+   provider's binary from `kachetong1314/mihomo-ninja`. Only the bytes bundled
+   as `verge-mihomo` change. Keep `verge-mihomo-alpha`, its download source,
+   the core selector, locales, installer, and service dependency unchanged.
+   Do not rename the backup slot or introduce a service fork. The kernel
+   itself decodes the subscription, including `#!PASS-INFO`; do not rewrite
+   profiles in the client.
+2. **Provider subscription access.** The provider requires a User-Agent
+   starting with `clash-ninja`. Change only the default subscription UA in
+   `src-tauri/src/utils/network.rs`; preserve explicit per-profile overrides.
+3. **Fork release configuration.** Keep this repository's updater endpoints
+   and public key in `tauri.conf.json` and `webview2.{x64,x86,arm64}.json`.
+   Preserve the asset ID query parameter in `scripts/updater*.mjs` so replaced
+   files have distinct download URLs. Upload each updater package together
+   with its matching signature, including Linux ARM DEB/RPM packages.
+   Published metadata must contain non-empty signatures that match the
+   current assets and verify against the embedded fork public key.
+   These are release requirements, not authorization to change application
+   behavior. Keep upstream scripts and dependencies even when their publishing
+   workflows are disabled for this fork.
+4. **Upstream synchronization.** `.github/workflows/upstream-sync.yml` reads
+   upstream into an isolated ref, restores its application source, and runs
+   `scripts/fork-overlay.mjs`. Keep the fork workflow directory, this file,
+   and the two fork scripts during that restore. If an overlay no longer
+   applies, stop before publishing; never create an upstream-only sync PR
+   that silently drops the provider kernel, UA, or fork updater configuration.
+   Do not copy whole old application files over a newer upstream version.
+   Preserve upstream formatting and line endings.
+5. **Release flow.** The fork's `release.yml` supports tag pushes and manual
+   dispatch with an existing tag. The source commit must be reachable from
+   main and the tag must match `package.json`'s version. Create a missing tag
+   or move an existing tag only when its source commit is incorrect. Do not
+   dispatch again if the tag push already triggered a build; a GITHUB_TOKEN
+   push does not trigger one, so automatic sync dispatches explicitly.
+   The fork disables upstream-only publishing and uses ad-hoc macOS signing
+   because upstream publishing credentials are unavailable here.
+   Use a fresh version for re-releases by default. Replace a published version
+   only when the maintainer explicitly requests it, and replace packages,
+   signatures, and updater metadata together. Verify the published artifacts.
+   Asset IDs cannot guarantee immediate refresh of cached updater metadata;
+   stale mirrors may still cause signature failures. Equal-version installs
+   require manual reinstallation.
 
-Symptom that any of the above was lost again: app starts with an empty
-proxy list and the validate log shows `unsupport proxy type: ninja`,
-or subscription updates fail with 403 Forbidden.
-
-
+A stock default kernel rejects the provider's `ninja` proxy type; a wrong
+subscription UA causes HTTP 403. Those regressions are within this fork's
+scope. Upstream application bugs are not.
 
 ## Collaboration Constraints
 

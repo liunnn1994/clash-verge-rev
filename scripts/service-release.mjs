@@ -1,3 +1,6 @@
+const SERVICE_URL_PREFIX =
+  'https://github.com/clash-verge-rev/clash-verge-service-ipc/releases/download'
+
 export function resolveServiceRelease(cargoManifest, host, platform) {
   const dependency = cargoManifest
     .split(/\r?\n/)
@@ -9,18 +12,12 @@ export function resolveServiceRelease(cargoManifest, host, platform) {
     )
   }
 
-  const repository = dependency?.match(
-    /\bgit\s*=\s*"(https:\/\/github\.com\/[^" ]+)"/,
-  )?.[1]
-  const releaseRepository = (
-    repository || 'https://github.com/clash-verge-rev/clash-verge-service-ipc'
-  ).replace(/\.git$/, '')
   const version = `v${packageVersion}`
   const archiveExt = platform === 'win32' ? 'zip' : 'tar.gz'
   const archiveFile = `clash-verge-service-ipc-${version}-${host}.${archiveExt}`
   return {
     version,
     archiveFile,
-    downloadURL: `${releaseRepository}/releases/download/${version}/${archiveFile}`,
+    downloadURL: `${SERVICE_URL_PREFIX}/${version}/${archiveFile}`,
   }
 }
