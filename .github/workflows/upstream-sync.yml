@@ -86,7 +86,7 @@ jobs:
           fi
           git push --atomic origin HEAD:main "refs/tags/$TAG"
           # GITHUB_TOKEN tag pushes do not trigger the release workflow.
-          gh workflow run release.yml -f tag="$TAG"
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" -f tag="$TAG"
       - name: Summary
         if: always()
         env:
